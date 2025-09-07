@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>URY (Free & Open Restaurant Software) – Development Installation Guide</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 20px;
+      background: #f8f9fa;
+      color: #212529;
+    }
+    h1, h2, h3 {
+      color: #004085;
+    }
+    code, pre {
+      background: #e9ecef;
+      padding: 4px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      display: block;
+      padding: 10px;
+      overflow-x: auto;
+    }
+    .note {
+      background: #fff3cd;
+      border: 1px solid #ffeeba;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+    .tip {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+    .warning {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>URY – Development Installation Guide (Ubuntu 24.04 WSL2)</h1>
+
+  <p>This page contains a <strong>complete end-to-end guide</strong) for setting up <strong>URY (Free & Open Restaurant Software)</strong> manually (without Docker) for development on <strong>Ubuntu 24.04 under WSL2</strong>. It includes prerequisites, step-by-step installation, community insights, common pitfalls (especially assets issues), and troubleshooting tips.</p>
+
+  <hr>
+
+  <h2>0 — Prelim Notes & WSL2 Tips</h2>
+  <ul>
+    <li><strong>URY is a Frappe/ERPNext app</strong>. You must install <em>ERPNext first</em>, then URY.</li>
+    <li>Use a <strong>fresh Frappe bench</strong> for installation.</li>
+    <li><strong>WSL2 systemd</strong>: If services like MariaDB/Redis don’t start, enable systemd in WSL2 or start services manually (<code>sudo service mariadb start</code>).</li>
+  </ul>
+
+  <div class="note">
+    Docs: <a href="https://ury.app/docs" target="_blank">URY Docs</a> | <a href="https://frappeframework.com/docs" target="_blank">Frappe Docs</a> | <a href="https://learn.microsoft.com/en-us/windows/wsl" target="_blank">Microsoft Learn (WSL)</a>
+  </div>
+
+  <h2>1 — Update System & Install Base Packages</h2>
+  <pre><code>sudo apt update && sudo apt upgrade -y
+sudo apt install -y git curl build-essential \
+  python3-venv python3-pip python3-dev libffi-dev libssl-dev \
+  redis-server mariadb-server mariadb-client \
+  ca-certificates pwgen
+</code></pre>
+
+  <h2>2 — Install Node.js + Yarn</h2>
+  <pre><code># Node 18 LTS (required)
+curl -sL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Yarn
+sudo npm install -g yarn
+</code></pre>
+
+  <h2>3 — Install wkhtmltopdf (Patched Qt Build)</h2>
+  <pre><code>wget &lt;WKHTMLTOPDF_DEB_URL&gt;
+sudo dpkg -i wkhtmltox_*.deb
+sudo apt -f install -y
+wkhtmltopdf --version
+</code></pre>
+
+  <h2>4 — Configure MariaDB</h2>
+  <pre><code>sudo tee /etc/mysql/mariadb.conf.d/50-frappe.cnf > /dev/null <<'EOF'
+[mysqld]
+character-set-client-handshake = FALSE
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+innodb-file-per-table=1
+[mysql]
+default-character-set = utf8mb4
+EOF
+
+sudo systemctl restart mariadb
+sudo mysql_secure_installation
+</code></pre>
+
+  <h2>5 — Install Bench CLI</h2>
+  <pre><code>sudo -H pip3 install --upgrade pip
+sudo -H pip3 install frappe-bench
+bench --version
+</code></pre>
+
+  <h2>6 — Initialize Bench</h2>
+  <pre><code>bench init frappe-bench --frappe-branch version-14
+cd frappe-bench
+</code></pre>
+
+  <h2>7 — Add ERPNext and URY</h2>
+  <pre><code>bench get-app --branch version-14 erpnext https://github.com/frappe/erpnext.git
+bench get-app ury https://github.com/ury-erp/ury.git
+</code></pre>
+
+  <h2>8 — Create Site & Install Apps</h2>
+  <pre><code>bench new-site ury.local
+bench --site ury.local install-app erpnext
+bench --site ury.local install-app ury
+bench --site ury.local build
+bench --site ury.local migrate
+</code></pre>
+
+  <div class="note">
+    Edit your Windows <code>hosts</code> file (<code>C:\Windows\System32\drivers\etc\hosts</code>):<br>
+    <code>127.0.0.1 ury.local</code>
+  </div>
+
+  <h2>9 — Start Development Server</h2>
+  <pre><code>bench start
+</code></pre>
+  <p>Then open: <a href="http://ury.local:8000/app/ury">http://ury.local:8000/app/ury</a></p>
+
+  <hr>
+
+  <h2>🔍 Common Asset Issues After Installation</h2>
+
+  <h3>What are Assets?</h3>
+  <p>Assets = frontend files (JS, CSS, images). Built with Node.js + Yarn during <code>bench build</code>.</p>
+
+  <h3>Common Problems</h3>
+  <ul>
+    <li><strong>Skipped build:</strong> UI broken if you forget <code>bench build</code>.</li>
+    <li><strong>Wrong Node version:</strong> URY expects Node 18.x.</li>
+    <li><strong>Missing Yarn:</strong> Build fails silently if yarn is not installed.</li>
+    <li><strong>Corrupted cache:</strong> Old assets cause styling issues.</li>
+    <li><strong>Permissions (WSL2):</strong> Ownership issues in <code>sites/assets</code>.</li>
+  </ul>
+
+  <h3>Fixes</h3>
+  <pre><code>bench build
+bench migrate
+bench clear-cache
+</code></pre>
+
+  <pre><code># if still broken
+rm -rf sites/assets/*
+bench build --force
+
+# fix ownership (WSL2)
+sudo chown -R $USER:$USER ~/frappe-bench/sites
+</code></pre>
+
+  <div class="tip">
+    ✅ Always run <code>bench build</code> + <code>bench clear-cache</code> after updates or new app installs.
+  </div>
+
+  <hr>
+
+  <h2>✅ Patterns of Successful Installs</h2>
+  <ul>
+    <li>Start with a clean bench (<code>bench init</code>).</li>
+    <li>Install ERPNext <em>before</em> URY.</li>
+    <li>Correct MariaDB UTF8MB4 config.</li>
+    <li>Patched wkhtmltopdf installed.</li>
+    <li>Host mapping (<code>ury.local</code>) configured.</li>
+    <li>Use <code>bench start</code> for development, not production configs.</li>
+  </ul>
+
+  <h2>⚠️ Why Installs Fail</h2>
+  <ul>
+    <li>Skipping ERPNext (installing URY directly).</li>
+    <li>Using Node.js v20+ instead of v18.</li>
+    <li>Wrong MariaDB configs.</li>
+    <li>Not installing patched wkhtmltopdf.</li>
+  </ul>
+
+  <hr>
+
+  <h2>📢 Community Insights (2024–2025)</h2>
+  <ul>
+    <li><strong>ERPNext/Frappe users:</strong> “Setup is hard first time, but stable once running.”</li>
+    <li><strong>Developers:</strong> “Use events, keep controllers clean, plan migrations.”</li>
+    <li><strong>URY real-world:</strong> Used in 4+ restaurant brands with multiple stores.</li>
+  </ul>
+
+  <hr>
+
+  <h2>🔧 Useful Commands</h2>
+  <ul>
+    <li><code>bench start</code> → Start dev server.</li>
+    <li><code>bench --site ury.local console</code> → Python shell for site.</li>
+    <li><code>bench clear-cache</code> → Clear cache.</li>
+    <li>Logs: <code>frappe-bench/logs/</code></li>
+  </ul>
+
+</body>
+</html>
